@@ -16,6 +16,7 @@ public class DependencyInfo {
   private final String sha256;
   private final Set<Coordinates> dependencies;
   private final Set<String> packages;
+  private final Set<String> exclusions;
 
   public DependencyInfo(
       Coordinates coordinates,
@@ -23,14 +24,15 @@ public class DependencyInfo {
       Path path,
       String sha256,
       Set<Coordinates> dependencies,
-      Set<String> packages) {
+      Set<String> packages,
+      Set<String> exclusions) {
     this.coordinates = coordinates;
     this.repos = ImmutableSet.copyOf(repos);
     this.path = path;
     this.sha256 = sha256;
     this.dependencies = ImmutableSet.copyOf(new TreeSet<>(dependencies));
-
     this.packages = ImmutableSet.copyOf(new TreeSet<>(packages));
+    this.exclusions = ImmutableSet.copyOf(new TreeSet<>(exclusions));
   }
 
   public Coordinates getCoordinates() {
@@ -53,6 +55,10 @@ public class DependencyInfo {
     return packages;
   }
 
+  public Set<String> getExclusions() {
+    return exclusions;
+  }
+
   public Path getPath() {
     return path;
   }
@@ -69,11 +75,12 @@ public class DependencyInfo {
     return Objects.equals(coordinates, that.coordinates)
         && Objects.equals(sha256, that.sha256)
         && Objects.equals(dependencies, that.dependencies)
-        && Objects.equals(packages, that.packages);
+        && Objects.equals(packages, that.packages)
+        && Objects.equals(exclusions, that.exclusions);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(coordinates, sha256, dependencies, packages);
+    return Objects.hash(coordinates, sha256, dependencies, packages, exclusions);
   }
 }

@@ -26,6 +26,7 @@ public class NebulaFormat {
 
     Map<String, Map<String, Object>> artifacts = new TreeMap<>();
     Map<String, Set<String>> deps = new TreeMap<>();
+    Map<String, Set<String>> exclusions = new TreeMap<>();
     Map<String, Set<String>> packages = new TreeMap<>();
     Map<String, Set<String>> repos = new LinkedHashMap<>();
     repositories.forEach(r -> repos.put(stripAuthenticationInformation(r), new TreeSet<>()));
@@ -83,6 +84,7 @@ public class NebulaFormat {
                   .map(Object::toString)
                   .collect(Collectors.toCollection(TreeSet::new)));
           packages.put(key, info.getPackages());
+          exclusions.put(key, info.getExclusions());
 
           if (info.getPath() != null) {
             // Regularise paths to UNIX format
@@ -93,6 +95,7 @@ public class NebulaFormat {
     Map<String, Object> lock = new LinkedHashMap<>();
     lock.put("artifacts", artifacts);
     lock.put("dependencies", removeEmptyItems(deps));
+    lock.put("exclusions", removeEmptyItems(exclusions));
     lock.put("packages", removeEmptyItems(packages));
     if (isUsingM2Local) {
       lock.put("m2local", true);

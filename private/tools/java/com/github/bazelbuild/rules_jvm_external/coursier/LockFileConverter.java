@@ -82,7 +82,7 @@ public class LockFileConverter {
 
     String converted =
         new GsonBuilder().setPrettyPrinting().serializeNulls().create().toJson(rendered);
-
+    
     if (output == null) {
       System.out.println(converted);
     } else {
@@ -165,6 +165,14 @@ public class LockFileConverter {
         packages = new TreeSet<>(depPackages);
       }
 
+      Object rawExclusions = coursierDep.get("exclusions");
+      Set<String> exclusions = Collections.EMPTY_SET;
+      if (rawExclusions != null) {
+        @SuppressWarnings("unchecked")
+        Collection<String> depExclusions = (Collection<String>) rawExclusions;
+        exclusions = new TreeSet<>(depExclusions);
+      }
+
       toReturn.add(
           new DependencyInfo(
               coords,
@@ -172,7 +180,8 @@ public class LockFileConverter {
               file == null ? null : Paths.get(file),
               (String) coursierDep.get("sha256"),
               directDeps,
-              packages));
+              packages,
+              exclusions));
     }
 
     return toReturn;

@@ -685,7 +685,8 @@ def infer_artifact_path_from_primary_and_repos(primary_url, repository_urls):
     userless_primary_url = remove_auth_from_url(primary_url)
     primary_artifact_path = None
     for url in userless_repository_urls:
-        if userless_primary_url.find(url) != -1:
+        # https://github.com/bazelbuild/rules_jvm_external/issues/323
+        if userless_primary_url.find(url) != -1 and userless_primary_url[len(url)] == "/":
             primary_artifact_path = userless_primary_url[len(url) + 1:]
             break
     return primary_artifact_path
