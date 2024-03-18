@@ -66,6 +66,13 @@ def _find_repository_url(artifact_url, repositories):
                 longest_match = repository
     return longest_match
 
+_ARTIFACT_JAR = """
+alias(
+    name = "{artifact_path}",
+    actual = "{source}",
+    visibility = ["//visibility:public"],
+)"""
+
 def _generate_target(
         repository_ctx,
         jar_versionless_target_labels,
@@ -320,18 +327,6 @@ genrule(
     to_return.append("alias(\n\tname = \"%s\",\n\tactual = \"%s\",\n%s)" %
                      (versioned_target_alias_label, target_label, alias_visibility))
 
-    # 11. If using maven_install.json, use a genrule to copy the file from the http_file
-    # repository into this repository.
-    #
-    # genrule(
-    #     name = "org_hamcrest_hamcrest_library_1_3_extension",
-    #     srcs = ["@org_hamcrest_hamcrest_library_1_3//file"],
-    #     outs = ["@maven//:v1/https/repo1.maven.org/maven2/org/hamcrest/hamcrest-library/1.3/hamcrest-library-1.3.jar"],
-    #     cmd = "cp $< $@",
-    # )
-    if repository_ctx.attr.maven_install_json:
-        to_return.append(_genrule_copy_artifact_from_http_file(artifact, default_visibilities))
-
     return to_return
 
 # Generate BUILD file with jvm_import and aar_import for each artifact in
@@ -350,6 +345,8 @@ def _generate_imports(repository_ctx, dependencies, explicit_artifacts, neverlin
     #
     # seen_imports :: string -> bool
     seen_imports = {}
+
+    added_aliases = {}
 
     # A list of versionless target labels for jar artifacts. This is used for
     # generating a compatibility layer for repositories. For example, if we generate
@@ -378,8 +375,6 @@ def _generate_imports(repository_ctx, dependencies, explicit_artifacts, neverlin
                     seen_imports[artifact_path] = True
                     target_label = escape(strip_packaging_and_classifier_and_version(artifact["coordinates"]))
                     srcjar_paths[target_label] = artifact_path
-                    if repository_ctx.attr.maven_install_json:
-                        all_imports.append(_genrule_copy_artifact_from_http_file(artifact, default_visibilities))
 
     # Iterate through the list of artifacts, and generate the target declaration strings.
     for artifact in dependencies:
@@ -409,8 +404,6 @@ def _generate_imports(repository_ctx, dependencies, explicit_artifacts, neverlin
             all_imports.append(
                 "alias(\n\tname = \"%s\",\n\tactual = \"%s\",\n\tvisibility = [\"//visibility:public\"],\n)" % (target_label, versioned_target_alias_label),
             )
-            if repository_ctx.attr.maven_install_json:
-                all_imports.append(_genrule_copy_artifact_from_http_file(artifact, default_visibilities))
         elif target_label in labels_to_override:
             # Override target labels with the user provided mapping, instead of generating
             # a jvm_import/aar_import based on information in dep_tree.
@@ -418,28 +411,21 @@ def _generate_imports(repository_ctx, dependencies, explicit_artifacts, neverlin
             all_imports.append(
                 "alias(\n\tname = \"%s\",\n\tactual = \"%s\",\n\tvisibility = [\"//visibility:public\"],)" % (target_label, labels_to_override.get(target_label)),
             )
-            if repository_ctx.attr.maven_install_json:
-                # Provide the downloaded artifact as a file target.
-                all_imports.append(_genrule_copy_artifact_from_http_file(artifact, default_visibilities))
             raw_artifact = dict(artifact)
-            raw_artifact["coordinates"] = "original_" + artifact["coordinates"]
             raw_artifact["maven_coordinates"] = artifact["coordinates"]
-            raw_artifact["out"] = "original_" + artifact["file"]
-
-            all_imports.extend(_generate_target(
-                repository_ctx,
-                jar_versionless_target_labels,
-                explicit_artifacts,
-                srcjar_paths,
-                labels_to_override,
-                repository_urls,
-                neverlink_artifacts,
-                testonly_artifacts,
-                default_visibilities,
-                raw_artifact,
-            ))
+            raw_artifact["out"] = "@%s//file" % escape(artifact["coordinates"])
 
         elif artifact_path != None:
+            if artifact["file"] not in added_aliases:
+                added_aliases[artifact["file"]] = True
+                repo = escape(artifact["coordinates"])
+                all_imports.append(
+                    _ARTIFACT_JAR.format(
+                        artifact_path = artifact["file"],
+                        source = "@%s//file" % repo
+                    )
+                )
+
             all_imports.extend(_generate_target(
                 repository_ctx,
                 jar_versionless_target_labels,
