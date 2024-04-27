@@ -29,25 +29,22 @@ load(
     "strip_packaging_and_classifier_and_version",
 )
 
-def _genrule_copy_artifact_from_http_file(artifact, visibilities):
+_ALIAS_FORMAT = """\
+alias(
+    name = "{name}_extension",
+    actual = "@{actual}//file",
+    visibility = [ {visibility} ]
+)
+"""
+def _alias_artifact_from_http_file(artifact, visibilities):
     http_file_repository = escape(artifact["coordinates"])
 
-    file = artifact.get("out", artifact["file"])
-
-    genrule = [
-        "genrule(",
-        "     name = \"%s_extension\"," % http_file_repository,
-        "     srcs = [\"@%s//file\"]," % http_file_repository,
-        "     outs = [\"%s\"]," % file,
-        "     cmd = \"cp $< $@\",",
-    ]
-    if get_packaging(artifact["coordinates"]) == "exe":
-        genrule.append("     executable = True,")
-    genrule.extend([
-        "     visibility = [%s]" % (",".join(["\"%s\"" % v for v in visibilities])),
-        ")",
-    ])
-    return "\n".join(genrule)
+    alias = _ALIAS_FORMAT.format(
+        name = http_file_repository,
+        actual = http_file_repository,
+        visibility = ", ".join(['"%s"' % v for v in visibilities])
+    )
+    return alias
 
 def _deduplicate_list(items):
     seen_items = {}
@@ -121,11 +118,11 @@ def _generate_target(
     #
     is_dylib = False
     if packaging == "jar":
-        target_import_string.append("\tjars = [\"%s\"]," % artifact_path)
+        target_import_string.append("\tjars = [\"@%s//file\"]," % escape(artifact["coordinates"]))
         if srcjar_paths != None and target_label in srcjar_paths:
             target_import_string.append("\tsrcjar = \"%s\"," % srcjar_paths[target_label])
     elif packaging == "aar":
-        target_import_string.append("\taar = \"%s\"," % artifact_path)
+        target_import_string.append("\taar = \"@%s//file\"," % escape(artifact["coordinates"]))
         if srcjar_paths != None and target_label in srcjar_paths:
             target_import_string.append("\tsrcjar = \"%s\"," % srcjar_paths[target_label])
     elif packaging in ["so", "dylib", "dll"]:
@@ -133,17 +130,11 @@ def _generate_target(
         jar_versionless_target_labels.append(target_label)
         dylib = simple_coord.split(":")[-1] + "." + packaging
         to_return.append(
-            """
-genrule(
-    name = "{dylib}_extension",
-    srcs = ["@{repository}//file"],
-    outs = ["{dylib}"],
-    cmd = "cp $< $@",
-    visibility = ["//visibility:public"],
-)""".format(
-                dylib = dylib,
-                repository = escape(artifact["coordinates"]),
-            ),
+            _ALIAS_FORMAT.format(
+                name = dylib,
+                actual = escape(artifact["coordinates"]),
+                visibility = '"//visibility:public"'
+            )
         )
 
     # 4. Generate the deps attribute with references to other target labels.
@@ -344,7 +335,7 @@ processor_class = "{processor_class}",
     #     cmd = "cp $< $@",
     # )
     if repository_ctx.attr.maven_install_json:
-        to_return.append(_genrule_copy_artifact_from_http_file(artifact, default_visibilities))
+        to_return.append(_alias_artifact_from_http_file(artifact, default_visibilities))
 
     return to_return
 
@@ -393,7 +384,7 @@ def _generate_imports(repository_ctx, dependencies, explicit_artifacts, neverlin
                     target_label = escape(strip_packaging_and_classifier_and_version(artifact["coordinates"]))
                     srcjar_paths[target_label] = artifact_path
                     if repository_ctx.attr.maven_install_json:
-                        all_imports.append(_genrule_copy_artifact_from_http_file(artifact, default_visibilities))
+                        all_imports.append(_alias_artifact_from_http_file(artifact, default_visibilities))
 
     # Iterate through the list of artifacts, and generate the target declaration strings.
     for artifact in dependencies:
@@ -424,7 +415,7 @@ def _generate_imports(repository_ctx, dependencies, explicit_artifacts, neverlin
                 "alias(\n\tname = \"%s\",\n\tactual = \"%s\",\n\tvisibility = [\"//visibility:public\"],\n)" % (target_label, versioned_target_alias_label),
             )
             if repository_ctx.attr.maven_install_json:
-                all_imports.append(_genrule_copy_artifact_from_http_file(artifact, default_visibilities))
+                all_imports.append(_alias_artifact_from_http_file(artifact, default_visibilities))
         elif target_label in labels_to_override:
             # Override target labels with the user provided mapping, instead of generating
             # a jvm_import/aar_import based on information in dep_tree.
@@ -434,7 +425,7 @@ def _generate_imports(repository_ctx, dependencies, explicit_artifacts, neverlin
             )
             if repository_ctx.attr.maven_install_json:
                 # Provide the downloaded artifact as a file target.
-                all_imports.append(_genrule_copy_artifact_from_http_file(artifact, default_visibilities))
+                all_imports.append(_alias_artifact_from_http_file(artifact, default_visibilities))
             raw_artifact = dict(artifact)
             raw_artifact["coordinates"] = "original_" + artifact["coordinates"]
             raw_artifact["maven_coordinates"] = artifact["coordinates"]
